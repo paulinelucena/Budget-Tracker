@@ -95,6 +95,9 @@
   .actions{ display:flex; gap:8px; align-items:center; }
   .icon-btn{ width:34px; height:34px; border-radius:9px; border:1px solid var(--line-strong); background: var(--card); color: var(--text-dim); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; }
   .icon-btn:hover{ color: var(--text); border-color: var(--cyan); }
+  
+  /* Hidden Reset Button */
+  #resetBtn { display: none !important; }
 
   /* Summary Banner Cards */
   .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
@@ -876,7 +879,6 @@ function renderTransactions(){
       <td class="r num" style="font-weight: 600; color: var(--text-dim);">${money(t.currentBalance)}</td>
       <td class="r">
         <button class="action-btn" onclick="openModal('tx', '${t.id}')" title="Edit">✏</button>
-        <button class="action-btn del" onclick="removeItem('transactions','${t.id}')" title="Remove">✕</button>
       </td>
     </tr>`;
   }).join('');
@@ -1216,12 +1218,6 @@ document.getElementById('modalBg').addEventListener('click', (e)=>{ if(e.target.
 document.getElementById('themeBtn').addEventListener('click', ()=>{
   const b = document.body;
   b.setAttribute('data-mode', b.getAttribute('data-mode')==='dark' ? 'light' : 'dark');
-});
-document.getElementById('resetBtn').addEventListener('click', ()=>{
-  if(confirm('Clear all saved data and start fresh?')){
-    localStorage.removeItem('budgetControlState');
-    location.reload();
-  }
 });
 
 load();
