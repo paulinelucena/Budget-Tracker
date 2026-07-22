@@ -95,9 +95,6 @@
   .actions{ display:flex; gap:8px; align-items:center; }
   .icon-btn{ width:34px; height:34px; border-radius:9px; border:1px solid var(--line-strong); background: var(--card); color: var(--text-dim); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; }
   .icon-btn:hover{ color: var(--text); border-color: var(--cyan); }
-  
-  /* Hidden Reset Button */
-  #resetBtn { display: none !important; }
 
   /* Summary Banner Cards */
   .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
@@ -291,6 +288,11 @@
     border-radius:8px; padding: 8px 10px; font-size:13px; font-family:'Inter';
   }
   .field input:focus, .field select:focus{ outline:none; border-color: var(--cyan); }
+  .settings-danger-box {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line-strong);
+  }
   .modal-actions{ display:flex; gap:8px; margin-top: 18px; }
   .btn{ flex:1; padding: 9px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; border:1px solid var(--line-strong); background:transparent; color: var(--text-dim); font-family:'Inter'; }
   .btn.primary{ background: var(--grad); color:#04211E; border:none; }
@@ -322,7 +324,6 @@
     <div class="actions">
       <button class="icon-btn" onclick="openModal('settings')" title="Dashboard Settings">⚙</button>
       <button class="icon-btn" id="themeBtn" title="Toggle theme">◐</button>
-      <button class="icon-btn" id="resetBtn" title="Reset all data">⟲</button>
     </div>
   </div>
 
@@ -530,6 +531,13 @@ function save(){
   render();
 }
 
+function resetAllData() {
+  if (confirm("Are you sure you want to reset all data? This will clear all transactions, bills, and settings.")) {
+    localStorage.removeItem('budgetControlState');
+    location.reload();
+  }
+}
+
 function populateCategoryFilterOptions() {
   const filterSelect = document.getElementById('filterCat');
   if(!filterSelect) return;
@@ -647,7 +655,6 @@ function handleFileImport(event) {
       let newestDateFound = null;
 
       json.forEach(row => {
-        // Look up field names regardless of case/extra spaces or currency symbols
         const keys = Object.keys(row);
         const dateKey = keys.find(k => k.toLowerCase().trim() === 'date');
         const descKey = keys.find(k => k.toLowerCase().trim() === 'description');
@@ -657,12 +664,10 @@ function handleFileImport(event) {
         if (dateKey && descKey && amtKey) {
           let rawDate = String(row[dateKey]).trim();
           
-          // Format date to YYYY-MM-DD standard format
           let formattedDate = rawDate;
           if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
             formattedDate = rawDate;
           } else if (typeof row[dateKey] === 'number') {
-            // Excel serial date format
             const parsedDate = XLSX.SSF.parse_date_code(row[dateKey]);
             if (parsedDate) {
               const y = parsedDate.y;
@@ -707,7 +712,6 @@ function handleFileImport(event) {
       console.error(err);
       alert("An error occurred while parsing the file. Please check the file format.");
     }
-    // Clear input value so re-uploading the same file triggers onchange
     event.target.value = '';
   };
 
@@ -823,11 +827,9 @@ function renderGoals(){
 function renderTransactions(){
   updateSortIcons();
 
-  // 1. Get current month transactions and sort chronologically by date first
   let allMonthlyRows = state.transactions.filter(t => t.date.startsWith(currentMonth));
   allMonthlyRows.sort((a, b) => new Date(a.date) - new Date(b.date));
   
-  // 2. Calculate running balance on chronologically sorted data
   let runningBalance = 0;
   const rowsWithBalance = allMonthlyRows.map(t => {
     runningBalance += t.amount;
@@ -852,7 +854,6 @@ function renderTransactions(){
     return matchDate && matchDesc && matchCat && matchAmt && matchBal;
   });
 
-  // 3. Apply manual column sorting (if headers are clicked)
   if (currentSortColumn) {
     filteredRows.sort((a, b) => {
       let valA = a[currentSortColumn];
@@ -1068,6 +1069,12 @@ function openModal(type, editId = null){
           <option value="light" ${currentTheme==='light'?'selected':''}>Light Mode</option>
         </select>
       </div>
+      
+      <!-- Reset Section inside Settings -->
+      <div class="settings-danger-box">
+        <button class="btn danger" style="width:100%;" onclick="resetAllData()">⟲ Reset All Dashboard Data</button>
+      </div>
+
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Cancel</button>
         <button class="btn primary" onclick="submitSettings()">Save Settings</button>
@@ -1075,7 +1082,7 @@ function openModal(type, editId = null){
       setupEnterKeySave(submitSettings);
   } else if(type==='tx'){
     const item = editId ? state.transactions.find(t=>t.id===editId) : null;
-    const isCashOut = item ? item.amount < 0 : true; // Default to Cash Out (Expense)
+    const isCashOut = item ? item.amount < 0 : true;
     const absVal = item ? Math.abs(item.amount) : '';
 
     const deleteBtnHtml = item 
@@ -1183,7 +1190,6 @@ function submitTx(editId){
   const txType = document.getElementById('f_type').value;
   let rawAmt = evaluateAmount(document.getElementById('f_amt').value);
   
-  // Enforce negative sign for Cash Out, positive sign for Cash In
   const amount = txType === 'out' ? -Math.abs(rawAmt) : Math.abs(rawAmt);
   const date = document.getElementById('f_date').value || `${currentMonth}-01`;
   
