@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<!-- SheetJS for XLS / XLSX parsing -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -279,7 +278,7 @@
 
   .modal-bg{ position:fixed; inset:0; background: rgba(4,10,20,0.6); display:none; align-items:center; justify-content:center; z-index: 50; padding: 20px; }
   .modal-bg.open{ display:flex; }
-  .modal{ background: var(--card); border:1px solid var(--line-strong); border-radius: 14px; padding: 20px; width: 100%; max-width: 400px; }
+  .modal{ background: var(--card); border:1px solid var(--line-strong); border-radius: 14px; padding: 20px; width: 100%; max-width: 440px; }
   .modal h3{ font-family:'Space Grotesk'; font-size:16px; margin: 0 0 14px; }
   .field{ margin-bottom: 12px; }
   .field label{ display:block; font-size:11px; color: var(--text-dim); margin-bottom:5px; }
@@ -290,8 +289,24 @@
   .field input:focus, .field select:focus{ outline:none; border-color: var(--cyan); }
   .settings-danger-box {
     margin-top: 18px;
-    padding-top: 14px;
-    border-top: 1px dashed var(--line-strong);
+    padding: 14px;
+    background: rgba(239, 100, 97, 0.05);
+    border: 1px solid rgba(239, 100, 97, 0.2);
+    border-radius: 10px;
+  }
+  .settings-danger-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--red);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 10px;
+  }
+  .range-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
   }
   .modal-actions{ display:flex; gap:8px; margin-top: 18px; }
   .btn{ flex:1; padding: 9px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; border:1px solid var(--line-strong); background:transparent; color: var(--text-dim); font-family:'Inter'; }
@@ -327,7 +342,6 @@
     </div>
   </div>
 
-  <!-- Summary Banner -->
   <div class="summary-grid">
     <div class="summary-card in">
       <div class="label">Total Cash In</div>
@@ -384,7 +398,6 @@
         <div class="sub" id="txCount">0 entries</div>
       </div>
       <div class="head-actions">
-        <!-- Import File Input & Button -->
         <input type="file" id="importFileInput" accept=".csv, .xlsx, .xls" style="display:none" onchange="handleFileImport(event)">
         <button class="add-link secondary" onclick="document.getElementById('importFileInput').click()" title="Import CSV or Excel file">⬆ Import File</button>
         <button class="add-link secondary" onclick="downloadCSVCurrentMonth()" title="Export CSV for current month">⬇ Export CSV</button>
@@ -393,7 +406,6 @@
       </div>
     </div>
 
-    <!-- Multi-Column Filter Toolbar -->
     <div class="filter-panel">
       <div class="filter-header">
         <span>🔎 Column Filters</span>
@@ -446,7 +458,6 @@
       <tbody id="txBody"></tbody>
     </table>
 
-    <!-- Bottom Add Transaction Button -->
     <div class="bottom-add-bar">
       <button class="bottom-add-btn" onclick="openModal('tx')">+ Add Transaction</button>
     </div>
@@ -531,8 +542,37 @@ function save(){
   render();
 }
 
+function resetDateRangeData() {
+  const startDate = document.getElementById('r_start_date').value;
+  const endDate = document.getElementById('r_end_date').value;
+
+  if (!startDate || !endDate) {
+    alert("Please select both a start and end date to reset.");
+    return;
+  }
+
+  if (startDate > endDate) {
+    alert("Start date cannot be after end date.");
+    return;
+  }
+
+  const matches = state.transactions.filter(t => t.date >= startDate && t.date <= endDate);
+  
+  if (matches.length === 0) {
+    alert("No transactions found in the selected date range.");
+    return;
+  }
+
+  if (confirm(`Are you sure you want to delete ${matches.length} transaction(s) between ${startDate} and ${endDate}?`)) {
+    state.transactions = state.transactions.filter(t => t.date < startDate || t.date > endDate);
+    save();
+    closeModal();
+    alert("Transactions in selected range deleted successfully!");
+  }
+}
+
 function resetAllData() {
-  if (confirm("Are you sure you want to reset all data? This will clear all transactions, bills, and settings.")) {
+  if (confirm("Are you sure you want to reset ALL data? This will permanently clear all transactions, bills, goals, and customized settings.")) {
     localStorage.removeItem('budgetControlState');
     location.reload();
   }
@@ -1037,214 +1077,3 @@ function openModal(type, editId = null){
 
   if(type==='settings'){
     const currentTheme = document.body.getAttribute('data-mode') || 'dark';
-    body.innerHTML = `<h3>⚙ Settings</h3>
-      <div class="field">
-        <label>Dashboard Title</label>
-        <input id="s_app_name" value="${state.appName || 'Budget Control'}" placeholder="e.g. Personal Expenses" />
-      </div>
-      <div class="field">
-        <label>Badge Initials (Logo Text)</label>
-        <input id="s_app_mark" maxlength="3" value="${state.appMark || 'PL'}" placeholder="e.g. PL" style="text-transform:uppercase;" />
-      </div>
-      <div class="field">
-        <label>Currency Code</label>
-        <select id="s_currency" onchange="onSettingsCurrencyChange(this.value)">
-          <option value="PHP" ${state.currency==='PHP'?'selected':''}>PHP (₱)</option>
-          <option value="USD" ${state.currency==='USD'?'selected':''}>USD ($)</option>
-          <option value="EUR" ${state.currency==='EUR'?'selected':''}>EUR (€)</option>
-          <option value="GBP" ${state.currency==='GBP'?'selected':''}>GBP (£)</option>
-          <option value="JPY" ${state.currency==='JPY'?'selected':''}>JPY (¥)</option>
-          <option value="CAD" ${state.currency==='CAD'?'selected':''}>CAD (CA$)</option>
-          <option value="AUD" ${state.currency==='AUD'?'selected':''}>AUD (A$)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Currency Symbol</label>
-        <input id="s_custom_symbol" value="${getSymbol()}" placeholder="e.g. ₱, $, €" />
-      </div>
-      <div class="field">
-        <label>Theme</label>
-        <select id="s_theme">
-          <option value="dark" ${currentTheme==='dark'?'selected':''}>Dark Mode</option>
-          <option value="light" ${currentTheme==='light'?'selected':''}>Light Mode</option>
-        </select>
-      </div>
-      
-      <!-- Reset Section inside Settings -->
-      <div class="settings-danger-box">
-        <button class="btn danger" style="width:100%;" onclick="resetAllData()">⟲ Reset All Dashboard Data</button>
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn primary" onclick="submitSettings()">Save Settings</button>
-      </div>`;
-      setupEnterKeySave(submitSettings);
-  } else if(type==='tx'){
-    const item = editId ? state.transactions.find(t=>t.id===editId) : null;
-    const isCashOut = item ? item.amount < 0 : true;
-    const absVal = item ? Math.abs(item.amount) : '';
-
-    const deleteBtnHtml = item 
-      ? `<button class="btn danger" onclick="removeItem('transactions', '${editId}'); closeModal();">Delete</button>` 
-      : '';
-
-    body.innerHTML = `<h3>${item ? 'Edit' : 'Add'} transaction</h3>
-      <div class="field"><label>Description</label><input id="f_desc" value="${item ? item.desc : ''}" placeholder="e.g. Groceries" /></div>
-      <div class="field"><label>Category</label><select id="f_cat">${catOptions}</select></div>
-      <div class="field">
-        <label>Transaction Type</label>
-        <select id="f_type">
-          <option value="out" ${isCashOut ? 'selected' : ''}>💸 Cash Out (Expense)</option>
-          <option value="in" ${!isCashOut ? 'selected' : ''}>💰 Cash In (Income)</option>
-        </select>
-      </div>
-      <div class="field"><label>Amount (${currLabel})</label><input id="f_amt" type="text" inputmode="decimal" value="${absVal}" placeholder="e.g. 620" /></div>
-      <div class="field"><label>Date</label><input id="f_date" type="date" value="${item ? item.date : defaultDate}" /></div>
-      <div class="modal-actions">
-        ${deleteBtnHtml}
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn primary" onclick="submitTx('${editId||''}')">Save</button>
-      </div>`;
-      if(item) document.getElementById('f_cat').value = item.cat;
-      setupEnterKeySave(submitTx, editId || '');
-  } else if(type==='bill'){
-    const item = editId ? state.bills.find(b=>b.id===editId) : null;
-    body.innerHTML = `<h3>${item ? 'Edit' : 'Add'} bill</h3>
-      <div class="field"><label>Name</label><input id="f_name" value="${item ? item.name : ''}" placeholder="e.g. Phone" /></div>
-      <div class="field"><label>Amount (${currLabel})</label><input id="f_amt" type="text" inputmode="decimal" value="${item ? item.amount : ''}" placeholder="e.g. 100+50" /></div>
-      <div class="field"><label>Due date</label><input id="f_due" type="date" value="${item ? item.due : defaultDate}" /></div>
-      <div class="modal-actions">
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn primary" onclick="submitBill('${editId||''}')">Save</button>
-      </div>`;
-      setupEnterKeySave(submitBill, editId || '');
-  } else if(type==='goal'){
-    const item = editId ? state.goals.find(g=>g.id===editId) : null;
-    body.innerHTML = `<h3>${item ? 'Edit' : 'Add'} goal</h3>
-      <div class="field"><label>Goal name</label><input id="f_name" value="${item ? item.name : ''}" placeholder="e.g. Vacation" /></div>
-      <div class="field"><label>Already saved (${currLabel})</label><input id="f_saved" type="text" inputmode="decimal" value="${item ? item.saved : 0}" /></div>
-      <div class="field"><label>Target (${currLabel})</label><input id="f_target" type="text" inputmode="decimal" value="${item ? item.target : ''}" placeholder="e.g. 5000*2" /></div>
-      <div class="modal-actions">
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn primary" onclick="submitGoal('${editId||''}')">Save</button>
-      </div>`;
-      setupEnterKeySave(submitGoal, editId || '');
-  } else if(type==='budget'){
-    const catName = editId;
-    const currentBudget = state.budgets[catName] || 0;
-    body.innerHTML = `<h3>Edit Budget: ${catName}</h3>
-      <div class="field"><label>Monthly Budget Limit (${currLabel})</label><input id="f_budget" type="text" inputmode="decimal" value="${currentBudget}" /></div>
-      <div class="modal-actions">
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn primary" onclick="submitBudget('${catName}')">Save</button>
-      </div>`;
-      setupEnterKeySave(submitBudget, catName);
-  } else if(type==='export_custom'){
-    body.innerHTML = `<h3>Export Consolidated Data</h3>
-      <div class="field"><label>Start Date</label><input id="f_start_date" type="date" value="${currentMonth}-01" /></div>
-      <div class="field"><label>End Date</label><input id="f_end_date" type="date" value="2026-12-31" /></div>
-      <div class="modal-actions">
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn primary" onclick="submitCustomExport()">Download CSV</button>
-      </div>`;
-      setupEnterKeySave(submitCustomExport);
-  }
-  bg.classList.add('open');
-  setTimeout(() => {
-    const firstInput = body.querySelector('input');
-    if(firstInput) firstInput.focus();
-  }, 50);
-}
-
-function onSettingsCurrencyChange(val) {
-  const symInput = document.getElementById('s_custom_symbol');
-  if(symInput) {
-    symInput.value = DEFAULT_CURRENCY_MAP[val] || '$';
-  }
-}
-
-function submitSettings() {
-  const appName = document.getElementById('s_app_name').value.trim();
-  const appMark = document.getElementById('s_app_mark').value.trim();
-  const currency = document.getElementById('s_currency').value;
-  const customSymbol = document.getElementById('s_custom_symbol').value.trim();
-  const theme = document.getElementById('s_theme').value;
-
-  state.appName = appName || 'Budget Control';
-  state.appMark = appMark ? appMark.toUpperCase() : 'PL';
-  state.currency = currency;
-  state.customSymbol = customSymbol || DEFAULT_CURRENCY_MAP[currency] || '$';
-
-  document.body.setAttribute('data-mode', theme);
-
-  closeModal();
-  save();
-}
-
-function closeModal(){ document.getElementById('modalBg').classList.remove('open'); }
-
-function submitTx(editId){
-  const desc = document.getElementById('f_desc').value.trim() || 'Untitled';
-  const cat = document.getElementById('f_cat').value;
-  const txType = document.getElementById('f_type').value;
-  let rawAmt = evaluateAmount(document.getElementById('f_amt').value);
-  
-  const amount = txType === 'out' ? -Math.abs(rawAmt) : Math.abs(rawAmt);
-  const date = document.getElementById('f_date').value || `${currentMonth}-01`;
-  
-  if(editId){
-    const item = state.transactions.find(t=>t.id===editId);
-    if(item){ item.desc = desc; item.cat = cat; item.amount = amount; item.date = date; }
-  } else {
-    state.transactions.push({id:uid(), date, desc, cat, amount});
-  }
-  closeModal(); save();
-}
-
-function submitBill(editId){
-  const name = document.getElementById('f_name').value.trim() || 'Untitled';
-  const amount = evaluateAmount(document.getElementById('f_amt').value);
-  const due = document.getElementById('f_due').value || `${currentMonth}-01`;
-  
-  if(editId){
-    const item = state.bills.find(b=>b.id===editId);
-    if(item){ item.name = name; item.amount = amount; item.due = due; }
-  } else {
-    state.bills.push({id:uid(), name, amount, due, paid:false});
-  }
-  closeModal(); save();
-}
-
-function submitGoal(editId){
-  const name = document.getElementById('f_name').value.trim() || 'Untitled';
-  const saved = evaluateAmount(document.getElementById('f_saved').value);
-  const target = evaluateAmount(document.getElementById('f_target').value) || 1;
-  
-  if(editId){
-    const item = state.goals.find(g=>g.id===editId);
-    if(item){ item.name = name; item.saved = saved; item.target = target; }
-  } else {
-    state.goals.push({id:uid(), name, saved, target});
-  }
-  closeModal(); save();
-}
-
-function submitBudget(catName){
-  const val = evaluateAmount(document.getElementById('f_budget').value);
-  state.budgets[catName] = val;
-  closeModal(); save();
-}
-
-document.getElementById('modalBg').addEventListener('click', (e)=>{ if(e.target.id==='modalBg') closeModal(); });
-document.getElementById('themeBtn').addEventListener('click', ()=>{
-  const b = document.body;
-  b.setAttribute('data-mode', b.getAttribute('data-mode')==='dark' ? 'light' : 'dark');
-});
-
-load();
-updateMonthUI();
-render();
-</script>
-</body>
-</html>
