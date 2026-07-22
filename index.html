@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- SheetJS for XLS / XLSX parsing -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg: #0B1220;
@@ -368,6 +370,9 @@
         <div class="sub" id="txCount">0 entries</div>
       </div>
       <div class="head-actions">
+        <!-- Import File Input & Button -->
+        <input type="file" id="importFileInput" accept=".csv, .xlsx, .xls" style="display:none" onchange="handleFileImport(event)">
+        <button class="add-link secondary" onclick="document.getElementById('importFileInput').click()" title="Import CSV or Excel file">⬆ Import File</button>
         <button class="add-link secondary" onclick="downloadCSVCurrentMonth()" title="Export CSV for current month">⬇ Export CSV</button>
         <button class="add-link secondary" onclick="openModal('export_custom')" title="Export customized date range">📅 Custom Range</button>
         <button class="add-link" onclick="openModal('tx')">+ Add transaction</button>
@@ -463,23 +468,9 @@ let state = {
   appMark: 'PL',
   currency: 'PHP',
   customSymbol: '₱',
-  transactions: [
-    {id: uid(), date:'2026-07-01', desc:'TRANSFER FROM JUNE 2026', cat:'Other', amount:13494.00},
-    {id: uid(), date:'2026-07-01', desc:'Pauline - MBTC', cat:'Other', amount:14000.00},
-    {id: uid(), date:'2026-07-01', desc:'Chabby - from MBTC', cat:'Other', amount:9000.00},
-    {id: uid(), date:'2026-07-01', desc:'Cash from Papa', cat:'Other', amount:2100.00},
-    {id: uid(), date:'2026-07-01', desc:'Chabby - to Gotyme', cat:'Other', amount:-3000.00},
-    {id: uid(), date:'2026-07-01', desc:'Transfer to GOTYME', cat:'Other', amount:-35000.00},
-    {id: uid(), date:'2026-07-01', desc:'BAON NI CHOKOY', cat:'Education', amount:-200.00},
-    {id: uid(), date:'2026-07-01', desc:'Food', cat:'Groceries', amount:-398.00},
-    {id: uid(), date:'2026-07-02', desc:'Cash From Papa', cat:'Education', amount:350.00},
-    {id: uid(), date:'2026-07-01', desc:'Food', cat:'Groceries', amount:615.00}
-  ],
+  transactions: [],
   bills: [],
-  goals: [
-    {id: uid(), name:'Budget for Limasawa', saved:10000, target:30000},
-    {id: uid(), name:'Bubong expenses - Chabby Ipon', saved:1000, target:100000}
-  ],
+  goals: [],
   budgets: { Education: 5000, Housing: 1200, Shopping: 200, Transport: 200, Travel: 100, Entertainment: 150, 'Personal care': 120, Groceries: 20000, Other: 1506 }
 };
 
@@ -617,6 +608,97 @@ function clearFilters() {
   document.getElementById('filterBalMin').value = '';
   document.getElementById('filterBalMax').value = '';
   renderTransactions();
+}
+
+/* File Import Logic */
+function handleFileImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+      if (!json || json.length === 0) {
+        alert("The selected file is empty or formatted incorrectly.");
+        return;
+      }
+
+      let importedCount = 0;
+      let newestDateFound = null;
+
+      json.forEach(row => {
+        // Look up field names regardless of case/extra spaces or currency symbols
+        const keys = Object.keys(row);
+        const dateKey = keys.find(k => k.toLowerCase().trim() === 'date');
+        const descKey = keys.find(k => k.toLowerCase().trim() === 'description');
+        const catKey = keys.find(k => k.toLowerCase().trim() === 'category');
+        const amtKey = keys.find(k => k.toLowerCase().includes('amount'));
+
+        if (dateKey && descKey && amtKey) {
+          let rawDate = String(row[dateKey]).trim();
+          
+          // Format date to YYYY-MM-DD standard format
+          let formattedDate = rawDate;
+          if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+            formattedDate = rawDate;
+          } else if (typeof row[dateKey] === 'number') {
+            // Excel serial date format
+            const parsedDate = XLSX.SSF.parse_date_code(row[dateKey]);
+            if (parsedDate) {
+              const y = parsedDate.y;
+              const m = String(parsedDate.m).padStart(2, '0');
+              const d = String(parsedDate.d).padStart(2, '0');
+              formattedDate = `${y}-${m}-${d}`;
+            }
+          }
+
+          const desc = String(row[descKey]).trim();
+          const cat = catKey && row[catKey] ? String(row[catKey]).trim() : 'Other';
+          const rawAmt = String(row[amtKey]).replace(/[^0-9.-]/g, '');
+          const amount = parseFloat(rawAmt);
+
+          if (formattedDate && desc && !isNaN(amount)) {
+            state.transactions.push({
+              id: uid(),
+              date: formattedDate,
+              desc: desc,
+              cat: cat,
+              amount: amount
+            });
+            importedCount++;
+            if (!newestDateFound || formattedDate > newestDateFound) {
+              newestDateFound = formattedDate;
+            }
+          }
+        }
+      });
+
+      if (importedCount > 0) {
+        if (newestDateFound) {
+          currentMonth = newestDateFound.substring(0, 7);
+          updateMonthUI();
+        }
+        save();
+        alert(`Successfully imported ${importedCount} transaction(s)!`);
+      } else {
+        alert("Could not find valid transaction data. Ensure columns match: Date, Description, Category, Amount.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred while parsing the file. Please check the file format.");
+    }
+    // Clear input value so re-uploading the same file triggers onchange
+    event.target.value = '';
+  };
+
+  reader.readAsArrayBuffer(file);
 }
 
 function render(){
