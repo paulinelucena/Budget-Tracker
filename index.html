@@ -207,6 +207,14 @@
   .action-btn:hover{ color: var(--cyan); }
   .action-btn.del:hover{ color: var(--red); }
 
+  /* Transaction Delete Button - Hidden by default, reveals on row hover */
+  .action-btn.del.tx-del {
+    display: none;
+  }
+  tr.draggable-row:hover .action-btn.del.tx-del {
+    display: inline-block;
+  }
+
   .copy-btn {
     background: transparent;
     border: none;
@@ -286,6 +294,8 @@
   .modal-actions{ display:flex; gap:8px; margin-top: 18px; }
   .btn{ flex:1; padding: 9px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; border:1px solid var(--line-strong); background:transparent; color: var(--text-dim); font-family:'Inter'; }
   .btn.primary{ background: var(--grad); color:#04211E; border:none; }
+  .btn.danger{ border-color: var(--red); color: var(--red); }
+  .btn.danger:hover{ background: rgba(239, 100, 97, 0.15); }
   .btn:hover{ opacity:0.9; }
   .empty{ font-size:12px; color: var(--text-faint); padding: 6px 0; }
 </style>
@@ -879,6 +889,7 @@ function renderTransactions(){
       <td class="r num" style="font-weight: 600; color: var(--text-dim);">${money(t.currentBalance)}</td>
       <td class="r">
         <button class="action-btn" onclick="openModal('tx', '${t.id}')" title="Edit">✏</button>
+        <button class="action-btn del tx-del" onclick="removeItem('transactions','${t.id}')" title="Delete">✕</button>
       </td>
     </tr>`;
   }).join('');
@@ -1067,6 +1078,10 @@ function openModal(type, editId = null){
     const isCashOut = item ? item.amount < 0 : true; // Default to Cash Out (Expense)
     const absVal = item ? Math.abs(item.amount) : '';
 
+    const deleteBtnHtml = item 
+      ? `<button class="btn danger" onclick="removeItem('transactions', '${editId}'); closeModal();">Delete</button>` 
+      : '';
+
     body.innerHTML = `<h3>${item ? 'Edit' : 'Add'} transaction</h3>
       <div class="field"><label>Description</label><input id="f_desc" value="${item ? item.desc : ''}" placeholder="e.g. Groceries" /></div>
       <div class="field"><label>Category</label><select id="f_cat">${catOptions}</select></div>
@@ -1080,6 +1095,7 @@ function openModal(type, editId = null){
       <div class="field"><label>Amount (${currLabel})</label><input id="f_amt" type="text" inputmode="decimal" value="${absVal}" placeholder="e.g. 620" /></div>
       <div class="field"><label>Date</label><input id="f_date" type="date" value="${item ? item.date : defaultDate}" /></div>
       <div class="modal-actions">
+        ${deleteBtnHtml}
         <button class="btn" onclick="closeModal()">Cancel</button>
         <button class="btn primary" onclick="submitTx('${editId||''}')">Save</button>
       </div>`;
