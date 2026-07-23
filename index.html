@@ -664,7 +664,8 @@ let state = {
   transactions: [],
   bills: [],
   goals: [],
-  budgets: { Education: 5000, Housing: 1200, Shopping: 200, Transport: 200, Travel: 100, Entertainment: 150, 'Personal care': 120, Groceries: 20000, Other: 1506 }
+  budgets: { Education: 5000, Housing: 1200, Shopping: 200, Transport: 200, Travel: 100, Entertainment: 150, 'Personal care': 120, Groceries: 20000, Other: 1506 },
+  lastModified: 0
 };
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
@@ -833,15 +834,22 @@ async function syncFromCloudOnStartup(){
   setSyncStatus('syncing', 'Syncing…');
   try{
     const cloudData = await cloudFetch();
-    if(cloudData){
+    const cloudModified = (cloudData && cloudData.lastModified) || 0;
+    const localModified = state.lastModified || 0;
+
+    if(cloudData && cloudModified > localModified){
+      // Cloud copy is newer than what's on this device — safe to pull it down.
       state = Object.assign({}, state, cloudData);
       suppressNextPush = true;
+      try{ localStorage.setItem('budgetControlState', JSON.stringify(state)); }catch(e){}
       populateCategoryFilterOptions();
       render();
-    } else {
-      // Nothing in the cloud yet — push what we have locally to seed it
+    } else if(!cloudData || localModified > cloudModified){
+      // This device has newer (or the only) data — push it up instead of
+      // letting an older cloud copy overwrite what's here.
       await cloudPush(state);
     }
+    // else: already in sync, nothing to do.
     setSyncStatus('synced', 'Synced');
   }catch(e){
     setSyncStatus('error', 'Offline — using local data');
@@ -913,6 +921,7 @@ function load(){
 }
 
 function save(){
+  state.lastModified = Date.now();
   try{ 
     localStorage.setItem('budgetControlState', JSON.stringify(state)); 
   }catch(e){}
