@@ -340,7 +340,17 @@
 
   .modal-bg{ position:fixed; inset:0; background: rgba(4,10,20,0.6); display:none; align-items:center; justify-content:center; z-index: 50; padding: 20px; }
   .modal-bg.open{ display:flex; }
-  .modal{ background: var(--card); border:1px solid var(--line-strong); border-radius: 14px; padding: 20px; width: 100%; max-width: 440px; }
+  .modal{
+    background: var(--card); border:1px solid var(--line-strong); border-radius: 14px;
+    padding: 20px; width: 100%; max-width: 440px;
+    max-height: 88vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .modal::-webkit-scrollbar{ width: 8px; }
+  .modal::-webkit-scrollbar-track{ background: transparent; }
+  .modal::-webkit-scrollbar-thumb{ background: var(--line-strong); border-radius: 8px; }
+  .modal::-webkit-scrollbar-thumb:hover{ background: var(--cyan); }
   .modal h3{ font-family:'Space Grotesk'; font-size:16px; margin: 0 0 14px; }
   .field{ margin-bottom: 12px; }
   .field label{ display:block; font-size:11px; color: var(--text-dim); margin-bottom:5px; }
@@ -422,7 +432,13 @@
   .sync-dot.off { background: var(--text-faint); }
   @keyframes pulseDot { 0%,100%{ opacity:1; } 50%{ opacity:0.3; } }
 
-  .modal-actions{ display:flex; gap:8px; margin-top: 18px; }
+  .modal-actions{
+    display:flex; gap:8px; margin-top: 18px;
+    position: sticky; bottom: -20px;
+    background: var(--card);
+    padding: 12px 0 4px;
+    margin-bottom: -20px;
+  }
   .btn{ flex:1; padding: 9px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; border:1px solid var(--line-strong); background:transparent; color: var(--text-dim); font-family:'Inter'; }
   .btn.primary{ background: var(--grad); color:#04211E; border:none; }
   .btn.danger{ border-color: var(--red); color: var(--red); }
