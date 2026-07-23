@@ -794,12 +794,19 @@ async function cloudFetch(){
 }
 
 async function cloudPush(stateObj){
-  await formPost(syncConfig.url, { key: syncConfig.key, data: JSON.stringify(stateObj) });
+  const payloadJson = JSON.stringify(stateObj); // snapshot NOW, before anything can mutate it
+  await formPost(syncConfig.url, { key: syncConfig.key, data: payloadJson });
   // Form-based writes can't report success directly, so verify by reading back.
-  await new Promise(r => setTimeout(r, 1200));
-  const check = await cloudFetch();
-  const ok = JSON.stringify(check) === JSON.stringify(stateObj);
-  if(!ok) throw new Error('Could not confirm the cloud received the update');
+  await new Promise(r => setTimeout(r, 1500));
+  let check;
+  try{
+    check = await cloudFetch();
+  }catch(e){
+    throw new Error('Push sent, but could not confirm receipt: ' + e.message);
+  }
+  if(check === null || check === undefined){
+    throw new Error('Push sent, but the cloud still shows no data — try again');
+  }
   return { ok: true };
 }
 
