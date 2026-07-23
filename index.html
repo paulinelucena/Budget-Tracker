@@ -370,6 +370,58 @@
     gap: 8px;
     margin-bottom: 10px;
   }
+  .settings-sync-box {
+    margin-top: 18px;
+    padding: 14px;
+    background: rgba(34, 211, 238, 0.05);
+    border: 1px solid rgba(34, 211, 238, 0.2);
+    border-radius: 10px;
+  }
+  .settings-sync-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--cyan);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sync-btn-row { display: flex; gap: 8px; margin-top: 4px; }
+  .sync-btn-row .btn { font-size: 11px; padding: 8px 6px; }
+  .sync-status-line {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sync-help {
+    font-size: 10.5px;
+    color: var(--text-faint);
+    line-height: 1.5;
+    margin-top: 8px;
+  }
+  .sync-help a { color: var(--cyan); }
+
+  /* Topbar sync status pill */
+  .sync-pill {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--card); border: 1px solid var(--line-strong);
+    border-radius: 9px; padding: 0 10px; height: 34px;
+    font-size: 11px; color: var(--text-dim); cursor: pointer;
+    white-space: nowrap;
+  }
+  .sync-pill:hover { border-color: var(--cyan); color: var(--text); }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
+  .sync-dot.synced { background: var(--green); box-shadow: 0 0 6px rgba(52,211,153,0.6); }
+  .sync-dot.syncing { background: var(--amber); animation: pulseDot 1s infinite ease-in-out; }
+  .sync-dot.error { background: var(--red); }
+  .sync-dot.off { background: var(--text-faint); }
+  @keyframes pulseDot { 0%,100%{ opacity:1; } 50%{ opacity:0.3; } }
+
   .modal-actions{ display:flex; gap:8px; margin-top: 18px; }
   .btn{ flex:1; padding: 9px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; border:1px solid var(--line-strong); background:transparent; color: var(--text-dim); font-family:'Inter'; }
   .btn.primary{ background: var(--grad); color:#04211E; border:none; }
@@ -399,6 +451,10 @@
     </div>
 
     <div class="actions">
+      <div class="sync-pill" id="syncPill" onclick="openModal('settings')" title="Cloud sync status — click to configure">
+        <span class="sync-dot off" id="syncDot"></span>
+        <span id="syncPillText">Local only</span>
+      </div>
       <button class="icon-btn" onclick="openModal('settings')" title="Dashboard Settings">⚙</button>
       <button class="icon-btn" id="themeBtn" title="Toggle theme">◐</button>
     </div>
@@ -621,7 +677,152 @@ function money(n){
 
 function catInfo(name){ return CATS.find(c=>c.name===name) || CATS[CATS.length-1]; }
 
+// ---------- Cloud Sync Engine ----------
+let syncConfig = { url: '', key: '' };
+let syncPushTimer = null;
+let syncInFlight = false;
+let suppressNextPush = false; // avoid re-pushing data we just pulled
+
+function loadSyncConfig(){
+  try{
+    const raw = localStorage.getItem('budgetSyncConfig');
+    if(raw) syncConfig = Object.assign({url:'', key:''}, JSON.parse(raw));
+  }catch(e){}
+}
+
+function saveSyncConfig(url, key){
+  syncConfig = { url: (url||'').trim(), key: (key||'').trim() };
+  try{ localStorage.setItem('budgetSyncConfig', JSON.stringify(syncConfig)); }catch(e){}
+}
+
+function isSyncConfigured(){
+  return !!(syncConfig.url && syncConfig.key);
+}
+
+function setSyncStatus(kind, text){
+  // kind: 'off' | 'syncing' | 'synced' | 'error'
+  const dot = document.getElementById('syncDot');
+  const label = document.getElementById('syncPillText');
+  const mDot = document.getElementById('syncModalDot');
+  const mText = document.getElementById('syncModalStatusText');
+  if(dot){ dot.className = 'sync-dot ' + kind; }
+  if(label){ label.textContent = text; }
+  if(mDot){ mDot.className = 'sync-dot ' + kind; }
+  if(mText){ mText.textContent = text; }
+}
+
+async function cloudFetch(){
+  const url = `${syncConfig.url}?key=${encodeURIComponent(syncConfig.key)}&t=${Date.now()}`;
+  const res = await fetch(url, { method: 'GET' });
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json.data;
+}
+
+async function cloudPush(stateObj){
+  const res = await fetch(syncConfig.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ key: syncConfig.key, data: stateObj })
+  });
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json;
+}
+
+function queueCloudPush(){
+  if(!isSyncConfigured()) return;
+  if(suppressNextPush){ suppressNextPush = false; return; }
+  clearTimeout(syncPushTimer);
+  setSyncStatus('syncing', 'Syncing…');
+  syncPushTimer = setTimeout(async () => {
+    try{
+      syncInFlight = true;
+      await cloudPush(state);
+      setSyncStatus('synced', 'Synced');
+    }catch(e){
+      setSyncStatus('error', 'Sync failed — saved locally');
+    }finally{
+      syncInFlight = false;
+    }
+  }, 900);
+}
+
+async function syncFromCloudOnStartup(){
+  if(!isSyncConfigured()){ setSyncStatus('off', 'Local only'); return; }
+  setSyncStatus('syncing', 'Syncing…');
+  try{
+    const cloudData = await cloudFetch();
+    if(cloudData){
+      state = Object.assign({}, state, cloudData);
+      suppressNextPush = true;
+      populateCategoryFilterOptions();
+      render();
+    } else {
+      // Nothing in the cloud yet — push what we have locally to seed it
+      await cloudPush(state);
+    }
+    setSyncStatus('synced', 'Synced');
+  }catch(e){
+    setSyncStatus('error', 'Offline — using local data');
+  }
+}
+
+async function testSyncConnection(){
+  const url = document.getElementById('sync_url').value.trim();
+  const key = document.getElementById('sync_key').value.trim();
+  if(!url || !key){ setSyncStatus('error', 'Enter URL and key first'); return; }
+  saveSyncConfig(url, key);
+  setSyncStatus('syncing', 'Testing…');
+  try{
+    await cloudFetch();
+    setSyncStatus('synced', 'Connection OK');
+  }catch(e){
+    setSyncStatus('error', 'Connection failed: ' + e.message);
+  }
+}
+
+async function pullFromCloudManual(){
+  const url = document.getElementById('sync_url').value.trim();
+  const key = document.getElementById('sync_key').value.trim();
+  if(!url || !key){ setSyncStatus('error', 'Enter URL and key first'); return; }
+  saveSyncConfig(url, key);
+  if(!confirm('This will overwrite the data on THIS device with whatever is currently in the cloud. Continue?')) return;
+  setSyncStatus('syncing', 'Pulling…');
+  try{
+    const cloudData = await cloudFetch();
+    if(cloudData){
+      state = Object.assign({}, state, cloudData);
+      suppressNextPush = true;
+      localStorage.setItem('budgetControlState', JSON.stringify(state));
+      populateCategoryFilterOptions();
+      render();
+      setSyncStatus('synced', 'Pulled from cloud');
+    } else {
+      setSyncStatus('error', 'Cloud has no data yet');
+    }
+  }catch(e){
+    setSyncStatus('error', 'Pull failed: ' + e.message);
+  }
+}
+
+async function pushToCloudManual(){
+  const url = document.getElementById('sync_url').value.trim();
+  const key = document.getElementById('sync_key').value.trim();
+  if(!url || !key){ setSyncStatus('error', 'Enter URL and key first'); return; }
+  saveSyncConfig(url, key);
+  if(!confirm('This will overwrite the CLOUD data with what is currently on this device. Continue?')) return;
+  setSyncStatus('syncing', 'Pushing…');
+  try{
+    await cloudPush(state);
+    setSyncStatus('synced', 'Pushed to cloud');
+  }catch(e){
+    setSyncStatus('error', 'Push failed: ' + e.message);
+  }
+}
+
 function load(){
+  loadSyncConfig();
   try{
     const raw = localStorage.getItem('budgetControlState');
     if(raw){ 
@@ -636,6 +837,7 @@ function save(){
     localStorage.setItem('budgetControlState', JSON.stringify(state)); 
   }catch(e){}
   render();
+  queueCloudPush();
 }
 
 function resetDateRangeData() {
@@ -1227,6 +1429,25 @@ function openModal(type, editId = null){
         </select>
       </div>
       
+      <div class="settings-sync-box">
+        <div class="settings-sync-title"><span>☁ Cloud Sync (Cross-Device)</span></div>
+        <div class="field">
+          <label>Web App URL</label>
+          <input id="sync_url" value="${syncConfig.url || ''}" placeholder="https://script.google.com/macros/s/.../exec" />
+        </div>
+        <div class="field" style="margin-bottom:6px;">
+          <label>Secret Key</label>
+          <input id="sync_key" value="${syncConfig.key || ''}" placeholder="Shared secret from your script" />
+        </div>
+        <div class="sync-btn-row">
+          <button type="button" class="btn" onclick="testSyncConnection()">🔄 Test</button>
+          <button type="button" class="btn" onclick="pullFromCloudManual()">⬇ Pull</button>
+          <button type="button" class="btn" onclick="pushToCloudManual()">⬆ Push</button>
+        </div>
+        <div class="sync-status-line" id="syncModalStatus"><span class="sync-dot off" id="syncModalDot"></span><span id="syncModalStatusText">Not connected yet</span></div>
+        <div class="sync-help">Paste the same URL &amp; key on every device to keep them in sync. "Push" sends this device's data to the cloud (overwrites cloud). "Pull" brings the cloud's data here (overwrites this device).</div>
+      </div>
+
       <div class="settings-danger-box">
         <div class="settings-danger-title">🗑 Reset Data Options</div>
         <div class="field">
@@ -1335,6 +1556,8 @@ function submitSettings() {
   const currency = document.getElementById('s_currency').value;
   const customSymbol = document.getElementById('s_custom_symbol').value.trim();
   const theme = document.getElementById('s_theme').value;
+  const syncUrl = document.getElementById('sync_url')?.value.trim() || '';
+  const syncKey = document.getElementById('sync_key')?.value.trim() || '';
 
   state.appName = appName || 'Budget Control';
   state.appMark = appMark ? appMark.toUpperCase() : 'PL';
@@ -1343,8 +1566,17 @@ function submitSettings() {
 
   document.body.setAttribute('data-mode', theme);
 
+  const configChanged = syncUrl !== syncConfig.url || syncKey !== syncConfig.key;
+  saveSyncConfig(syncUrl, syncKey);
+
   closeModal();
   save();
+
+  if(configChanged && isSyncConfigured()){
+    syncFromCloudOnStartup();
+  } else if(!isSyncConfigured()){
+    setSyncStatus('off', 'Local only');
+  }
 }
 
 function closeModal(){ document.getElementById('modalBg').classList.remove('open'); }
@@ -1410,6 +1642,7 @@ document.getElementById('themeBtn').addEventListener('click', ()=>{
 load();
 updateMonthUI();
 render();
+syncFromCloudOnStartup();
 </script>
 </body>
 </html>
