@@ -795,20 +795,33 @@ async function cloudFetch(){
 }
 
 async function cloudPush(stateObj){
-  const payloadJson = JSON.stringify(stateObj); // snapshot NOW, before anything can mutate it
+  // Stamp a fresh, unique timestamp for this push so we can positively
+  // confirm the cloud actually received THIS write (not just "any" data).
+  stateObj.lastModified = Date.now();
+  const expectedModified = stateObj.lastModified;
+  const payloadJson = JSON.stringify(stateObj);
+
+  try{ localStorage.setItem('budgetControlState', payloadJson); }catch(e){}
+
   await formPost(syncConfig.url, { key: syncConfig.key, data: payloadJson });
-  // Form-based writes can't report success directly, so verify by reading back.
-  await new Promise(r => setTimeout(r, 1500));
-  let check;
-  try{
-    check = await cloudFetch();
-  }catch(e){
-    throw new Error('Push sent, but could not confirm receipt: ' + e.message);
+
+  // Form-based writes can't report success directly, so confirm by reading
+  // back and checking the timestamp matches — retrying a few times in case
+  // of propagation delay. If it never matches, we report a real failure
+  // instead of assuming success.
+  let lastErr = null;
+  for(let attempt = 0; attempt < 5; attempt++){
+    await new Promise(r => setTimeout(r, 1200));
+    try{
+      const check = await cloudFetch();
+      if(check && check.lastModified === expectedModified){
+        return { ok: true };
+      }
+    }catch(e){
+      lastErr = e;
+    }
   }
-  if(check === null || check === undefined){
-    throw new Error('Push sent, but the cloud still shows no data — try again');
-  }
-  return { ok: true };
+  throw new Error(lastErr ? ('Could not confirm after retries: ' + lastErr.message) : 'The cloud never showed this update — the write may be getting blocked');
 }
 
 function queueCloudPush(){
