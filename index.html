@@ -727,23 +727,80 @@ function setSyncStatus(kind, text){
   if(mText){ mText.textContent = text; }
 }
 
+// Transport layer that avoids CORS entirely:
+// - Reads use JSONP (a <script> tag load is never subject to CORS)
+// - Writes use a hidden auto-submitting form targeting a hidden iframe
+//   (a form navigation is also never subject to CORS; we just can't read
+//   the response, so we verify the write with a follow-up JSONP read)
+function jsonp(url){
+  return new Promise((resolve, reject) => {
+    const cbName = 'syncCb_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let timeoutId;
+    function cleanup(){
+      clearTimeout(timeoutId);
+      delete window[cbName];
+      script.remove();
+    }
+    window[cbName] = (data) => { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error('Could not reach the sync URL (check it\'s correct and deployed)')); };
+    timeoutId = setTimeout(() => { cleanup(); reject(new Error('Request timed out')); }, 15000);
+    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
+    document.body.appendChild(script);
+  });
+}
+
+function formPost(url, fields){
+  return new Promise((resolve) => {
+    const frameName = 'syncFrame_' + Math.random().toString(36).slice(2);
+    const iframe = document.createElement('iframe');
+    iframe.name = frameName;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = url;
+    form.target = frameName;
+    form.style.display = 'none';
+
+    Object.entries(fields).forEach(([k, v]) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = k;
+      input.value = v;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    let done = false;
+    const finish = () => {
+      if(done) return;
+      done = true;
+      setTimeout(() => { form.remove(); iframe.remove(); }, 1000);
+      resolve();
+    };
+    iframe.addEventListener('load', finish);
+    form.submit();
+    setTimeout(finish, 6000); // fallback in case load doesn't fire
+  });
+}
+
 async function cloudFetch(){
   const url = `${syncConfig.url}?key=${encodeURIComponent(syncConfig.key)}&t=${Date.now()}`;
-  const res = await fetch(url, { method: 'GET' });
-  const json = await res.json();
+  const json = await jsonp(url);
   if(json.error) throw new Error(json.error);
   return json.data;
 }
 
 async function cloudPush(stateObj){
-  const res = await fetch(syncConfig.url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ key: syncConfig.key, data: stateObj })
-  });
-  const json = await res.json();
-  if(json.error) throw new Error(json.error);
-  return json;
+  await formPost(syncConfig.url, { key: syncConfig.key, data: JSON.stringify(stateObj) });
+  // Form-based writes can't report success directly, so verify by reading back.
+  await new Promise(r => setTimeout(r, 1200));
+  const check = await cloudFetch();
+  const ok = JSON.stringify(check) === JSON.stringify(stateObj);
+  if(!ok) throw new Error('Could not confirm the cloud received the update');
+  return { ok: true };
 }
 
 function queueCloudPush(){
