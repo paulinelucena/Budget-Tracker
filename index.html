@@ -745,7 +745,7 @@ function jsonp(url){
     }
     window[cbName] = (data) => { cleanup(); resolve(data); };
     script.onerror = () => { cleanup(); reject(new Error('Could not reach the sync URL (check it\'s correct and deployed)')); };
-    timeoutId = setTimeout(() => { cleanup(); reject(new Error('Request timed out')); }, 15000);
+    timeoutId = setTimeout(() => { cleanup(); reject(new Error('Request timed out')); }, 30000);
     script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
     document.body.appendChild(script);
   });
